@@ -1,4 +1,4 @@
-const CACHE_NAME = 'pc-tracker-v4';
+const CACHE_NAME = 'pc-tracker-v5';
 
 const PRECACHE_URLS = [
   './',

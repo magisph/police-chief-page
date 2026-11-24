@@ -10,6 +10,7 @@ import {
 } from './charts.js';
 
 const store = createStore();
+const THEME_STORAGE_KEY = 'pc_tracker_theme_v1';
 
 const ui = {
   tab: 'today',
@@ -107,20 +108,81 @@ function renderPlusIcon() {
   return `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>`;
 }
 
+function renderThemeIcon(theme) {
+  if (theme === 'light') {
+    return `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg>`;
+  }
+  return `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2m0 16v2M4.93 4.93l1.41 1.41m11.32 11.32l1.41 1.41M2 12h2m16 0h2M4.93 19.07l1.41-1.41m11.32-11.32l1.41-1.41"/></svg>`;
+}
+
+function getCurrentTheme() {
+  if (document.documentElement.dataset.theme === 'light') return 'light';
+  try {
+    return localStorage.getItem(THEME_STORAGE_KEY) === 'light' ? 'light' : 'dark';
+  } catch {
+    return 'dark';
+  }
+}
+
+function syncThemeControls(theme) {
+  const toggleBtn = els.header.querySelector('[data-action="toggle-theme"]');
+  if (toggleBtn) {
+    toggleBtn.innerHTML = renderThemeIcon(theme);
+    toggleBtn.setAttribute(
+      'aria-label',
+      theme === 'light' ? 'Ativar tema escuro' : 'Ativar tema claro'
+    );
+    toggleBtn.setAttribute('aria-pressed', String(theme === 'light'));
+  }
+
+  for (const btn of els.main.querySelectorAll('[data-action="set-theme"]')) {
+    const active = btn.dataset.theme === theme;
+    btn.classList.toggle('is-active', active);
+    btn.setAttribute('aria-pressed', String(active));
+  }
+}
+
+function applyTheme(nextTheme, persist = true) {
+  const theme = nextTheme === 'light' ? 'light' : 'dark';
+  document.documentElement.dataset.theme = theme;
+  const meta = document.querySelector('meta[name="theme-color"]');
+  if (meta) {
+    meta.setAttribute('content', theme === 'light' ? '#F4F6F9' : '#0D1117');
+  }
+  if (persist) {
+    try {
+      localStorage.setItem(THEME_STORAGE_KEY, theme);
+    } catch {
+      // Ignore storage quota errors for theme preference
+    }
+  }
+  syncThemeControls(theme);
+}
+
 function renderHeader(stats) {
   const officeLabel = stats.latestPower.officeLevel
     ? `Gab. ${stats.latestPower.officeLevel}`
     : 'Gab. 26';
+  const theme = getCurrentTheme();
 
   els.header.innerHTML = `
     <div class="header-brand">
       <h1 class="header-title">PC Tracker</h1>
       <span class="office-pill">${escapeHtml(officeLabel)}</span>
     </div>
-    <button type="button" class="header-power-btn" data-action="open-power-sheet" aria-label="Registrar Poder Total">
-      <span class="header-power-val tabular">${escapeHtml(formatPowerCompact(stats.latestPower.power))}</span>
-      <span class="header-power-plus" aria-hidden="true">+</span>
-    </button>
+    <div class="header-actions">
+      <button type="button"
+        class="theme-toggle-btn"
+        data-action="toggle-theme"
+        aria-label="${theme === 'light' ? 'Ativar tema escuro' : 'Ativar tema claro'}"
+        aria-pressed="${theme === 'light'}">
+        ${renderThemeIcon(theme)}
+      </button>
+      <button type="button" class="header-power-btn" data-action="open-power-sheet" aria-label="Registrar Poder Total">
+        <span class="header-power-val tabular">${escapeHtml(formatPowerCompact(stats.latestPower.power))}</span>
+        <span class="header-power-plus" aria-hidden="true">+</span>
+      </button>
+    </div>
   `;
 }
 
@@ -480,6 +542,7 @@ function renderChartsTab(state, stats) {
 
 function renderDataTab(state) {
   const installed = isStandaloneMode();
+  const theme = getCurrentTheme();
   const installBlock = installed
     ? `<span class="text-done" style="font-size:13.5px">Aplicativo instalado e rodando em modo nativo offline.</span>`
     : ui.deferredInstallPrompt
@@ -494,6 +557,20 @@ function renderDataTab(state) {
       `;
 
   return `
+    <section class="card stack-col">
+      <h2 class="section-title" style="margin:0">Aparência</h2>
+      <div class="theme-switch-group" role="group" aria-label="Selecionar tema">
+        <button type="button" class="theme-choice-btn ${theme === 'dark' ? 'is-active' : ''}" data-action="set-theme" data-theme="dark" aria-pressed="${theme === 'dark'}">
+          ${renderThemeIcon('light')}
+          <span>Escuro</span>
+        </button>
+        <button type="button" class="theme-choice-btn ${theme === 'light' ? 'is-active' : ''}" data-action="set-theme" data-theme="light" aria-pressed="${theme === 'light'}">
+          ${renderThemeIcon('dark')}
+          <span>Claro</span>
+        </button>
+      </div>
+    </section>
+
     <section class="card stack-col">
       <h2 class="section-title" style="margin:0">Instalação no Poco X6</h2>
       ${installBlock}
@@ -848,8 +925,13 @@ els.nav.addEventListener('click', (event) => {
 
 // Header actions
 els.header.addEventListener('click', (event) => {
-  const actionEl = event.target.closest('[data-action="open-power-sheet"]');
-  if (actionEl) openPowerSheet();
+  const btn = event.target.closest('[data-action]');
+  if (!btn) return;
+  if (btn.dataset.action === 'open-power-sheet') {
+    openPowerSheet();
+  } else if (btn.dataset.action === 'toggle-theme') {
+    applyTheme(getCurrentTheme() === 'light' ? 'dark' : 'light');
+  }
 });
 
 // Main delegated clicks
@@ -867,6 +949,8 @@ els.main.addEventListener('click', async (event) => {
 
   if (action === 'set-status' && id && status) {
     handleStatusChange(id, status, false);
+  } else if (action === 'set-theme' && btn.dataset.theme) {
+    applyTheme(btn.dataset.theme);
   } else if (action === 'open-step-detail' && id) {
     openStepDetailSheet(id);
   } else if (action === 'toggle-active-strip') {
@@ -1093,4 +1177,5 @@ if ('serviceWorker' in navigator) {
   });
 }
 
+applyTheme(getCurrentTheme(), false);
 render();

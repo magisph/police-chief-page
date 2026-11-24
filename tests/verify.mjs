@@ -371,3 +371,31 @@ test('styles.css clears FAB height in .main-view bottom padding and places .toas
   assert.ok(Number(mainMatch[1]) >= fabTop + 16, `.main-view bottom padding (${mainMatch[1]}) must clear FAB top (${fabTop})`);
   assert.ok(Number(toastBottomMatch[1]) >= fabTop + 8, `.toast bottom (${toastBottomMatch[1]}) must sit above FAB top (${fabTop})`);
 });
+
+test('supports light/dark theme switching with persisted preference and theme-aware SVGs', () => {
+  const html = fs.readFileSync(path.join(rootDir, 'index.html'), 'utf8');
+  assert.ok(html.includes('pc_tracker_theme_v1'), 'index.html must apply persisted theme before first paint');
+  assert.ok(html.includes('data-theme'), 'index.html pre-paint script must set data-theme');
+
+  const css = fs.readFileSync(path.join(rootDir, 'styles.css'), 'utf8');
+  assert.ok(css.includes("data-theme='light'") || css.includes('data-theme="light"'));
+  assert.ok(css.includes('color-scheme: light'));
+  assert.ok(css.includes('color-scheme: dark'));
+
+  for (const sel of ['.theme-toggle-btn', '.theme-choice-btn']) {
+    const idx = css.indexOf(`${sel} {`);
+    assert.ok(idx !== -1, `Missing selector ${sel}`);
+    const block = css.slice(idx, css.indexOf('}', idx) + 1);
+    const match = /min-height:\s*(\d+)px/.exec(block);
+    assert.ok(match && Number(match[1]) >= 44, `${sel} min-height must be >= 44px`);
+  }
+
+  const chartsSrc = fs.readFileSync(path.join(rootDir, 'js', 'charts.js'), 'utf8');
+  assert.ok(!chartsSrc.includes('#F1F5F9') && !chartsSrc.includes('#E2E8F0') && !chartsSrc.includes('#0D1117'));
+  assert.ok(chartsSrc.includes('var(--text)') && chartsSrc.includes('var(--text-secondary)'));
+
+  const appSrc = fs.readFileSync(path.join(rootDir, 'js', 'app.js'), 'utf8');
+  assert.ok(appSrc.includes('toggle-theme'));
+  assert.ok(appSrc.includes('set-theme'));
+  assert.ok(appSrc.includes('pc_tracker_theme_v1'));
+});
