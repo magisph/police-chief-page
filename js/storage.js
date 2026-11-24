@@ -70,7 +70,7 @@ function normalizeCustomStep(raw) {
     : mapFrontToCategory(front);
   return {
     id: String(raw.id),
-    insertAfterId: String(raw.insertAfterId || 'base-67'),
+    insertAfterId: String(raw.insertAfterId || `base-${BASE_STEPS.length}`),
     mission,
     front,
     category,
@@ -162,13 +162,13 @@ export function parseAndValidateBackup(jsonString) {
 }
 
 /**
- * Merges base 67 steps with customSteps preserving deterministic N.1/N.2 numbering.
+ * Merges base steps with customSteps preserving deterministic N.1/N.2 numbering.
  * @param {ReturnType<typeof cloneDefaultState>} state
  */
 export function getMergedSteps(state) {
   const afterMap = new Map();
   for (const cs of state.customSteps) {
-    const key = cs.insertAfterId || 'base-67';
+    const key = cs.insertAfterId || `base-${BASE_STEPS.length}`;
     if (!afterMap.has(key)) afterMap.set(key, []);
     afterMap.get(key).push(cs);
   }
@@ -229,7 +229,7 @@ export function getMergedSteps(state) {
       result.push({
         ...cs,
         step: null,
-        displayNumber: `67.${orphanIdx}`,
+        displayNumber: `${BASE_STEPS.length}.${orphanIdx}`,
         isCustom: true,
         status,
         completedAt: state.completed[cs.id] || null,
@@ -394,7 +394,7 @@ export function createStore(backend = globalThis.localStorage) {
     const id = `custom-${Date.now()}-${Math.floor(Math.random() * 10000)}`;
     const newStep = normalizeCustomStep({
       id,
-      insertAfterId: insertAfterId || 'base-67',
+      insertAfterId: insertAfterId || `base-${BASE_STEPS.length}`,
       mission: trimmedMission,
       front,
       category,

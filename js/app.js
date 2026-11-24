@@ -1,4 +1,4 @@
-import { CATEGORIES } from './data.js';
+import { BASE_STEPS, CATEGORIES } from './data.js';
 import { createStore, filterSteps } from './storage.js';
 import {
   formatPowerCompact,
@@ -13,13 +13,13 @@ const store = createStore();
 
 const ui = {
   tab: 'today',
-  statusFilter: 'pending', // pending | in_progress | all | completed
+  statusFilter: 'pending', // pending | in_progress | completed | all
   categoryFilter: 'all',
   searchQuery: '',
-  expandedIds: new Set(),
   activeStripOpen: true,
   powerLogOpen: false,
   selectedPowerId: null,
+  detailStepId: null,
   deferredInstallPrompt: null,
   toastTimer: null,
 };
@@ -74,7 +74,7 @@ function showToast(message) {
   clearTimeout(ui.toastTimer);
   ui.toastTimer = setTimeout(() => {
     els.toast.hidden = true;
-  }, 2400);
+  }, 2200);
 }
 
 function openSheet(html) {
@@ -83,6 +83,7 @@ function openSheet(html) {
 }
 
 function closeSheet() {
+  ui.detailStepId = null;
   els.backdrop.hidden = true;
   els.sheet.innerHTML = '';
 }
@@ -94,32 +95,71 @@ function isStandaloneMode() {
   );
 }
 
+function renderCheckIcon() {
+  return `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 13l4 4L19 7"/></svg>`;
+}
+
+function renderSearchIcon() {
+  return `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>`;
+}
+
+function renderPlusIcon() {
+  return `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>`;
+}
+
 function renderHeader(stats) {
   const officeLabel = stats.latestPower.officeLevel
-    ? `Gabinete ${stats.latestPower.officeLevel}`
-    : 'Gabinete 26';
+    ? `Gab. ${stats.latestPower.officeLevel}`
+    : 'Gab. 26';
 
   els.header.innerHTML = `
     <div class="header-brand">
-      <div class="header-title-row">
-        <h1 class="header-title">PC Tracker</h1>
-        <span class="office-pill">${escapeHtml(officeLabel)}</span>
-      </div>
-      <span class="header-sub tabular">${stats.completedCount}/${stats.total} etapas • ${stats.percent}%</span>
+      <h1 class="header-title">PC Tracker</h1>
+      <span class="office-pill">${escapeHtml(officeLabel)}</span>
     </div>
     <button type="button" class="header-power-btn" data-action="open-power-sheet" aria-label="Registrar Poder Total">
-      <span class="header-power-val tabular">${escapeHtml(formatPowerFull(stats.latestPower.power))}</span>
-      <span class="header-power-cta">+ Registrar Poder</span>
+      <span class="header-power-val tabular">${escapeHtml(formatPowerCompact(stats.latestPower.power))}</span>
+      <span class="header-power-plus" aria-hidden="true">+</span>
     </button>
   `;
 }
 
-function renderCheckIcon() {
-  return `<svg width="20" height="20" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 16.2L4.8 12l-1.4 1.4L9 19 21 7l-1.4-1.4L9 16.2z" fill="currentColor"/></svg>`;
-}
+function renderStepRow(step) {
+  const isDone = step.status === 'completed';
+  const isActive = step.status === 'in_progress';
+  const nextCheckStatus = isDone ? 'pending' : 'completed';
 
-function renderPauseIcon() {
-  return `<svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z" fill="currentColor"/></svg>`;
+  const rowClasses = [
+    'step-row',
+    isDone ? 'is-completed' : '',
+    isActive ? 'is-in-progress' : '',
+  ]
+    .filter(Boolean)
+    .join(' ');
+
+  return `
+    <article class="${rowClasses}" data-step-id="${escapeHtml(step.id)}">
+      <button type="button" class="step-row-tap" data-action="open-step-detail" data-id="${escapeHtml(step.id)}">
+        <div class="step-row-meta">
+          <span class="step-num tabular">#${escapeHtml(step.displayNumber)}</span>
+          <span>${escapeHtml(step.front)}</span>
+          ${step.isCustom ? '<span class="step-custom-dot">• Extra</span>' : ''}
+          ${isActive ? '<span class="step-status-tag">• Em curso</span>' : ''}
+          ${step.note ? '<span class="step-note-tag">• Nota</span>' : ''}
+        </div>
+        <div class="step-mission">${escapeHtml(step.mission)}</div>
+        <div class="step-deadline">${escapeHtml(step.deadline)}</div>
+      </button>
+      <button type="button"
+        class="check-btn ${isDone ? 'is-completed' : ''}"
+        data-action="set-status"
+        data-id="${escapeHtml(step.id)}"
+        data-status="${nextCheckStatus}"
+        aria-label="${isDone ? 'Desmarcar etapa' : 'Concluir etapa'} ${escapeHtml(step.displayNumber)}">
+        <span class="check-ring">${renderCheckIcon()}</span>
+      </button>
+    </article>
+  `;
 }
 
 function renderTodayTab(steps, stats) {
@@ -145,18 +185,18 @@ function renderTodayTab(steps, stats) {
                   .map(
                     (s) => `
                   <div class="active-item">
-                    <div class="active-item-body">
-                      <p class="active-item-title">#${escapeHtml(s.displayNumber)} • ${escapeHtml(s.mission)}</p>
-                      <div class="active-item-meta">${escapeHtml(s.front)} • ${escapeHtml(s.deadline)}</div>
-                    </div>
-                    <div class="mini-action-row">
-                      <button type="button" class="icon-btn is-active" data-action="set-status" data-id="${escapeHtml(s.id)}" data-status="pending" title="Voltar para pendente" aria-label="Voltar etapa ${escapeHtml(s.displayNumber)} para pendente">
-                        ${renderPauseIcon()}
-                      </button>
-                      <button type="button" class="icon-btn is-done" data-action="set-status" data-id="${escapeHtml(s.id)}" data-status="completed" title="Concluir etapa" aria-label="Concluir etapa ${escapeHtml(s.displayNumber)}">
-                        ${renderCheckIcon()}
-                      </button>
-                    </div>
+                    <button type="button" class="active-item-tap" data-action="open-step-detail" data-id="${escapeHtml(s.id)}">
+                      <span class="active-item-title">#${escapeHtml(s.displayNumber)} · ${escapeHtml(s.mission)}</span>
+                      <span class="active-item-meta">${escapeHtml(s.front)} · ${escapeHtml(s.deadline)}</span>
+                    </button>
+                    <button type="button"
+                      class="check-btn"
+                      data-action="set-status"
+                      data-id="${escapeHtml(s.id)}"
+                      data-status="completed"
+                      aria-label="Concluir etapa ${escapeHtml(s.displayNumber)}">
+                      <span class="check-ring">${renderCheckIcon()}</span>
+                    </button>
                   </div>
                 `
                   )
@@ -172,24 +212,29 @@ function renderTodayTab(steps, stats) {
     ? `
       <section class="card hero-card">
         <div class="hero-kicker">
-          <span class="step-badge">Próxima • #${escapeHtml(hero.displayNumber)}</span>
-          <span class="front-badge">${escapeHtml(hero.front)}</span>
+          <span class="hero-kicker-tag tabular">Próxima • #${escapeHtml(hero.displayNumber)}</span>
+          <span class="hero-front-label">${escapeHtml(hero.front)}</span>
         </div>
         <h2 class="hero-mission">${escapeHtml(hero.mission)}</h2>
-        <div class="detail-grid">
-          <div class="detail-row"><strong>Prazo:</strong> ${escapeHtml(hero.deadline)}</div>
-          <div class="detail-row"><strong>Custo:</strong> ${escapeHtml(hero.cost)}</div>
-          <div class="detail-row"><strong>Ganhos:</strong> ${escapeHtml(hero.gains)}</div>
-          ${hero.note ? `<div class="note-preview">Nota: ${escapeHtml(hero.note)}</div>` : ''}
+        <div class="spec-list">
+          <div class="spec-row"><strong>Prazo:</strong> ${escapeHtml(hero.deadline)}</div>
+          <div class="spec-row"><strong>Custo:</strong> ${escapeHtml(hero.cost)}</div>
+          <div class="spec-row"><strong>Ganhos:</strong> ${escapeHtml(hero.gains)}</div>
         </div>
+        ${hero.note ? `<div class="note-callout">Nota: ${escapeHtml(hero.note)}</div>` : ''}
         <div class="hero-actions">
           <button type="button" class="btn-primary" data-action="set-status" data-id="${escapeHtml(hero.id)}" data-status="completed">
             ${renderCheckIcon()}
             <span>Concluir Etapa #${escapeHtml(hero.displayNumber)}</span>
           </button>
-          <button type="button" class="btn-ghost-link" data-action="set-status" data-id="${escapeHtml(hero.id)}" data-status="in_progress">
-            Mover para Em curso / Aguardando
-          </button>
+          <div class="hero-secondary-row">
+            <button type="button" class="btn-tonal-info" data-action="set-status" data-id="${escapeHtml(hero.id)}" data-status="in_progress">
+              Em curso
+            </button>
+            <button type="button" class="btn-secondary" data-action="open-step-detail" data-id="${escapeHtml(hero.id)}">
+              Gerenciar / Nota
+            </button>
+          </div>
         </div>
       </section>
     `
@@ -197,13 +242,13 @@ function renderTodayTab(steps, stats) {
       <section class="card hero-card">
         <h2 class="hero-mission">${
           inProgressSteps.length > 0
-            ? 'Todas as demais etapas estão Em curso ou Concluídas'
+            ? 'Demais etapas em andamento ou concluídas'
             : 'Plano Mestre 100% concluído!'
         }</h2>
-        <p class="header-sub">${
+        <p class="muted" style="margin:0;font-size:13.5px">${
           inProgressSteps.length > 0
-            ? 'Finalize suas etapas em andamento no bloco acima ou adicione novas metas na aba Etapas.'
-            : 'Você completou todas as etapas cadastradas. Adicione novas metas quando avançar para os próximos patamares.'
+            ? 'Conclua as metas Em curso acima ou adicione novas etapas na aba Etapas.'
+            : 'Todas as etapas cadastradas foram concluídas. Use a aba Etapas para incluir novos objetivos.'
         }</p>
       </section>
     `;
@@ -211,13 +256,13 @@ function renderTodayTab(steps, stats) {
   const upcomingHtml =
     upcoming.length > 0
       ? `
-      <section class="card">
-        <div class="section-head">
+      <section class="stack-col">
+        <div class="section-head" style="margin-bottom:0;padding:0 2px">
           <h2 class="section-title">Na sequência</h2>
           <button type="button" class="inline-pill-btn" data-action="goto-steps">Ver todas</button>
         </div>
-        <div class="steps-list">
-          ${upcoming.map((s) => renderStepCard(s)).join('')}
+        <div class="steps-surface">
+          ${upcoming.map((s) => renderStepRow(s)).join('')}
         </div>
       </section>
     `
@@ -229,20 +274,20 @@ function renderTodayTab(steps, stats) {
         ${renderProgressRingSVG(stats)}
       </div>
       <div class="summary-metrics">
-        <div class="metric-row">
-          <span class="status-pill is-done tabular">${stats.completedCount} concluídas</span>
+        <h2 class="summary-headline tabular">${stats.completedCount} de ${stats.total} concluídas</h2>
+        <div class="summary-subline tabular">
           ${
             stats.inProgressCount > 0
-              ? `<span class="status-pill is-active tabular">${stats.inProgressCount} em curso</span>`
+              ? `<span class="text-info">${stats.inProgressCount} em curso</span>`
               : ''
           }
-          <span class="status-pill tabular">${stats.pendingCount} pendentes</span>
+          <span>${stats.pendingCount} pendentes</span>
         </div>
-        <div class="header-sub">
-          Poder atual: <strong class="tabular" style="color:var(--text)">${escapeHtml(formatPowerFull(stats.latestPower.power))}</strong>
+        <div class="summary-subline tabular">
+          <span>Poder: <strong style="color:var(--text)">${escapeHtml(formatPowerFull(stats.latestPower.power))}</strong></span>
           ${
             stats.powerDelta > 0
-              ? `<span style="color:var(--done)">(+${escapeHtml(formatPowerCompact(stats.powerDelta))})</span>`
+              ? `<span class="text-done">+${escapeHtml(formatPowerCompact(stats.powerDelta))}</span>`
               : ''
           }
         </div>
@@ -254,83 +299,6 @@ function renderTodayTab(steps, stats) {
   `;
 }
 
-function renderStepCard(step) {
-  const expanded = ui.expandedIds.has(step.id);
-  const isDone = step.status === 'completed';
-  const isActive = step.status === 'in_progress';
-
-  const nextCheckStatus = isDone ? 'pending' : 'completed';
-  const stateClasses = [
-    'step-card',
-    isDone ? 'is-completed' : '',
-    isActive ? 'is-in-progress' : '',
-  ]
-    .filter(Boolean)
-    .join(' ');
-
-  return `
-    <article class="${stateClasses}" data-step-id="${escapeHtml(step.id)}">
-      <div class="step-card-main">
-        <button type="button" class="step-card-tap" data-action="toggle-expand" data-id="${escapeHtml(step.id)}" aria-expanded="${expanded}">
-          <div class="step-top-meta">
-            <span class="step-num tabular">#${escapeHtml(step.displayNumber)}</span>
-            <span class="step-front">${escapeHtml(step.front)}</span>
-            ${step.isCustom ? '<span class="step-custom-tag">Extra</span>' : ''}
-          </div>
-          <div class="step-mission">${escapeHtml(step.mission)}</div>
-          <div class="step-subline">
-            <span>${escapeHtml(step.deadline)}</span>
-            ${isActive ? '<span class="dot-badge is-active">● Em curso</span>' : ''}
-            ${step.note ? '<span class="dot-badge is-note">● Nota</span>' : ''}
-          </div>
-        </button>
-        <button type="button"
-          class="check-btn ${isDone ? 'is-completed' : ''}"
-          data-action="set-status"
-          data-id="${escapeHtml(step.id)}"
-          data-status="${nextCheckStatus}"
-          aria-label="${isDone ? 'Desmarcar etapa' : 'Concluir etapa'} ${escapeHtml(step.displayNumber)}">
-          ${renderCheckIcon()}
-        </button>
-      </div>
-      ${
-        expanded
-          ? `
-        <div class="step-expanded">
-          <div class="detail-row"><strong>Custo:</strong> ${escapeHtml(step.cost)}</div>
-          <div class="detail-row"><strong>Ganhos:</strong> ${escapeHtml(step.gains)}</div>
-          ${
-            step.completedAt
-              ? `<div class="detail-row"><strong>Concluída em:</strong> ${escapeHtml(formatIsoToBr(step.completedAt))}</div>`
-              : ''
-          }
-          ${step.note ? `<div class="note-preview">${escapeHtml(step.note)}</div>` : ''}
-          <div class="expanded-actions">
-            ${
-              !isDone
-                ? `<button type="button" class="discrete-btn ${isActive ? 'is-active' : ''}" data-action="set-status" data-id="${escapeHtml(step.id)}" data-status="${isActive ? 'pending' : 'in_progress'}">
-                    ${isActive ? 'Retomar pendente' : 'Mover p/ Em curso'}
-                  </button>`
-                : ''
-            }
-            <button type="button" class="discrete-btn" data-action="open-note-sheet" data-id="${escapeHtml(step.id)}">
-              ${step.note ? 'Editar nota' : 'Adicionar nota'}
-            </button>
-            ${
-              step.isCustom
-                ? `<button type="button" class="discrete-btn" data-action="open-edit-step-sheet" data-id="${escapeHtml(step.id)}">Editar</button>
-                   <button type="button" class="discrete-btn is-danger" data-action="delete-custom-step" data-id="${escapeHtml(step.id)}">Excluir</button>`
-                : ''
-            }
-          </div>
-        </div>
-      `
-          : ''
-      }
-    </article>
-  `;
-}
-
 function renderStepsListHtml(steps) {
   const filtered = filterSteps(steps, {
     statusFilter: ui.statusFilter,
@@ -338,8 +306,8 @@ function renderStepsListHtml(steps) {
     searchQuery: ui.searchQuery,
   });
   return filtered.length > 0
-    ? filtered.map((s) => renderStepCard(s)).join('')
-    : '<div class="empty-state card">Nenhuma etapa encontrada para esse filtro.</div>';
+    ? filtered.map((s) => renderStepRow(s)).join('')
+    : '<div class="empty-state">Nenhuma etapa encontrada para esse filtro.</div>';
 }
 
 function updateStepsListOnly() {
@@ -356,30 +324,29 @@ function updateStepsListOnly() {
   }
 }
 
-function renderStepsTab(steps) {
+function renderStepsTab(steps, stats) {
   const statusChips = [
-    ['pending', 'Pendentes'],
-    ['in_progress', 'Em curso'],
-    ['all', 'Todas'],
-    ['completed', 'Concluídas'],
+    ['pending', 'Pendentes', stats.pendingCount],
+    ['in_progress', 'Em curso', stats.inProgressCount],
+    ['completed', 'Feitas', stats.completedCount],
+    ['all', 'Todas', stats.total],
   ];
 
   return `
     <section class="steps-toolbar">
-      <div class="search-row">
-        <div class="search-input-wrap">
-          <input id="step-search-input" class="search-input" type="search" placeholder="Buscar etapa, prédio, herói..." value="${escapeHtml(ui.searchQuery)}" aria-label="Buscar etapas" />
-          <button id="search-clear-btn" type="button" class="search-clear" data-action="clear-search" aria-label="Limpar busca" ${ui.searchQuery ? '' : 'hidden'}>×</button>
-        </div>
-        <button type="button" class="add-step-btn" data-action="open-add-step-sheet" title="Nova etapa personalizada" aria-label="Adicionar nova etapa">+</button>
+      <div class="search-input-wrap">
+        <span class="search-icon">${renderSearchIcon()}</span>
+        <input id="step-search-input" class="search-input" type="search" placeholder="Buscar missão, prédio, herói..." value="${escapeHtml(ui.searchQuery)}" aria-label="Buscar etapas" />
+        <button id="search-clear-btn" type="button" class="search-clear" data-action="clear-search" aria-label="Limpar busca" ${ui.searchQuery ? '' : 'hidden'}>×</button>
       </div>
 
-      <div class="chip-scroll" role="tablist" aria-label="Filtro por status">
+      <div class="status-segmented" role="tablist" aria-label="Filtro por status">
         ${statusChips
           .map(
-            ([val, label]) => `
-          <button type="button" class="filter-chip ${ui.statusFilter === val ? 'is-selected' : ''}" data-action="set-status-filter" data-value="${val}">
-            ${label}
+            ([val, label, count]) => `
+          <button type="button" class="seg-btn ${ui.statusFilter === val ? 'is-selected' : ''}" data-action="set-status-filter" data-value="${val}">
+            <span>${label}</span>
+            <span class="seg-count tabular">${count}</span>
           </button>
         `
           )
@@ -400,9 +367,14 @@ function renderStepsTab(steps) {
       </div>
     </section>
 
-    <section id="steps-list" class="steps-list">
+    <section id="steps-list" class="steps-surface">
       ${renderStepsListHtml(steps)}
     </section>
+
+    <button type="button" class="fab-add-btn" data-action="open-add-step-sheet" aria-label="Adicionar nova etapa">
+      ${renderPlusIcon()}
+      <span>Etapa</span>
+    </button>
   `;
 }
 
@@ -420,16 +392,16 @@ function renderChartsTab(state, stats) {
   const deltaSign = stats.powerDelta > 0 ? '+' : '';
 
   return `
-    <section class="kpi-grid">
-      <div class="kpi-box">
+    <section class="kpi-bar">
+      <div class="kpi-cell">
         <span class="kpi-label">Concluídas</span>
         <span class="kpi-val tabular">${stats.completedCount}/${stats.total}</span>
       </div>
-      <div class="kpi-box">
+      <div class="kpi-cell">
         <span class="kpi-label">Poder Atual</span>
         <span class="kpi-val tabular">${escapeHtml(formatPowerCompact(stats.latestPower.power))}</span>
       </div>
-      <div class="kpi-box">
+      <div class="kpi-cell">
         <span class="kpi-label">Crescimento</span>
         <span class="kpi-val tabular ${stats.powerDelta > 0 ? 'is-positive' : ''}">${deltaSign}${escapeHtml(formatPowerCompact(stats.powerDelta))}</span>
       </div>
@@ -438,7 +410,7 @@ function renderChartsTab(state, stats) {
     <section class="card">
       <div class="section-head">
         <h2 class="section-title">Curva de Poder Total</h2>
-        <button type="button" class="inline-pill-btn" data-action="open-power-sheet">+ Registrar Poder</button>
+        <button type="button" class="inline-pill-btn" data-action="open-power-sheet">+ Registrar</button>
       </div>
       ${renderPowerLineSVG(sortedPower, activePowerId)}
       ${
@@ -447,13 +419,13 @@ function renderChartsTab(state, stats) {
         <div class="power-selected-bar">
           <div>
             <strong class="tabular">${escapeHtml(formatPowerFull(selectedPower.power))}</strong>
-            <span class="header-sub"> • ${escapeHtml(formatIsoToBr(selectedPower.date))}${
-              selectedPower.officeLevel ? ` • Gab. ${escapeHtml(selectedPower.officeLevel)}` : ''
+            <span class="muted"> · ${escapeHtml(formatIsoToBr(selectedPower.date))}${
+              selectedPower.officeLevel ? ` · Gab. ${escapeHtml(selectedPower.officeLevel)}` : ''
             }</span>
-            ${selectedPower.note ? `<div class="header-sub">${escapeHtml(selectedPower.note)}</div>` : ''}
+            ${selectedPower.note ? `<div class="muted" style="font-size:12px">${escapeHtml(selectedPower.note)}</div>` : ''}
           </div>
           <button type="button" class="active-toggle-btn" data-action="toggle-power-log">
-            ${ui.powerLogOpen ? 'Ocultar lista' : `Histórico (${sortedPower.length})`}
+            ${ui.powerLogOpen ? 'Ocultar' : `Lista (${sortedPower.length})`}
           </button>
         </div>
       `
@@ -470,10 +442,10 @@ function renderChartsTab(state, stats) {
             <div class="power-log-row">
               <div>
                 <strong class="tabular">${escapeHtml(formatPowerFull(item.power))}</strong>
-                <span class="header-sub"> • ${escapeHtml(formatIsoToBr(item.date))}${
-                item.officeLevel ? ` • Gab. ${escapeHtml(item.officeLevel)}` : ''
+                <span class="muted"> · ${escapeHtml(formatIsoToBr(item.date))}${
+                item.officeLevel ? ` · Gab. ${escapeHtml(item.officeLevel)}` : ''
               }</span>
-                ${item.note ? `<div class="header-sub">${escapeHtml(item.note)}</div>` : ''}
+                ${item.note ? `<div class="muted" style="font-size:12px">${escapeHtml(item.note)}</div>` : ''}
               </div>
               ${
                 sortedPower.length > 1
@@ -499,7 +471,7 @@ function renderChartsTab(state, stats) {
 
     <section class="card">
       <div class="section-head">
-        <h2 class="section-title">Ritmo Diário (Etapas Concluídas)</h2>
+        <h2 class="section-title">Ritmo Diário (Concluídas)</h2>
       </div>
       ${renderPaceBarsSVG(state.completed, 7)}
     </section>
@@ -509,15 +481,15 @@ function renderChartsTab(state, stats) {
 function renderDataTab(state) {
   const installed = isStandaloneMode();
   const installBlock = installed
-    ? `<div class="status-pill is-done">Aplicativo instalado e rodando em modo standalone</div>`
+    ? `<span class="text-done" style="font-size:13.5px">Aplicativo instalado e rodando em modo nativo offline.</span>`
     : ui.deferredInstallPrompt
       ? `<button type="button" class="btn-primary" data-action="trigger-install">Instalar App no Poco X6</button>`
       : `
-        <p class="header-sub" style="margin:0">Para instalar como app nativo no Chrome do Poco X6:</p>
+        <p class="muted" style="margin:0;font-size:13.5px">Para instalar como aplicativo no Chrome do Poco X6:</p>
         <ol class="guide-list">
           <li>Toque no menu <strong>⋮</strong> (canto superior direito do Chrome).</li>
           <li>Toque em <strong>Adicionar à tela inicial</strong> (ou <strong>Instalar aplicativo</strong>).</li>
-          <li>Confirme em <strong>Instalar</strong> para usar em tela cheia e offline.</li>
+          <li>Confirme em <strong>Instalar</strong> para abrir em tela cheia e offline.</li>
         </ol>
       `;
 
@@ -529,8 +501,8 @@ function renderDataTab(state) {
 
     <section class="card stack-col">
       <h2 class="section-title" style="margin:0">Backup Local (JSON)</h2>
-      <p class="header-sub" style="margin:0">
-        Seus dados ficam salvos no navegador deste celular (${Object.keys(state.completed).length} concluídas, ${Object.keys(state.notes).length} notas, ${state.customSteps.length} extras, ${state.powerHistory.length} registros de Poder).
+      <p class="muted" style="margin:0;font-size:13px">
+        Salvo no aparelho: ${Object.keys(state.completed).length} concluídas, ${Object.keys(state.notes).length} notas, ${state.customSteps.length} extras, ${state.powerHistory.length} registros de Poder.
       </p>
       <button type="button" class="btn-secondary" data-action="export-backup">Exportar Backup (.json)</button>
       <button type="button" class="btn-secondary" data-action="pick-import-file">Importar Backup (.json)</button>
@@ -559,7 +531,7 @@ function render() {
   if (ui.tab === 'today') {
     html = renderTodayTab(steps, stats);
   } else if (ui.tab === 'steps') {
-    html = renderStepsTab(steps);
+    html = renderStepsTab(steps, stats);
   } else if (ui.tab === 'charts') {
     html = renderChartsTab(state, stats);
   } else {
@@ -569,11 +541,89 @@ function render() {
   els.main.innerHTML = html;
 }
 
+function openStepDetailSheet(stepId) {
+  const state = store.loadState();
+  const step = store.getMergedSteps(state).find((s) => s.id === stepId);
+  if (!step) return;
+  ui.detailStepId = stepId;
+
+  const statusButtons = [
+    ['pending', 'Pendente'],
+    ['in_progress', 'Em curso'],
+    ['completed', 'Concluída'],
+  ];
+
+  openSheet(`
+    <div class="sheet-handle"></div>
+    <div class="sheet-header">
+      <h2 id="sheet-title" class="sheet-title tabular">Etapa #${escapeHtml(step.displayNumber)} · ${escapeHtml(step.front)}</h2>
+      <button type="button" class="discrete-btn" data-action="close-sheet">Fechar</button>
+    </div>
+
+    <p class="sheet-mission">${escapeHtml(step.mission)}</p>
+
+    <div class="detail-status-switch" role="group" aria-label="Alterar status da etapa">
+      ${statusButtons
+        .map(
+          ([val, label]) => `
+        <button type="button"
+          class="status-choice-btn ${step.status === val ? 'is-active' : ''}"
+          data-action="sheet-set-status"
+          data-id="${escapeHtml(step.id)}"
+          data-status="${val}">
+          ${label}
+        </button>
+      `
+        )
+        .join('')}
+    </div>
+
+    <div class="spec-list" style="margin-bottom:12px">
+      <div class="spec-row"><strong>Prazo:</strong> ${escapeHtml(step.deadline)}</div>
+      <div class="spec-row"><strong>Custo:</strong> ${escapeHtml(step.cost)}</div>
+      <div class="spec-row"><strong>Ganhos:</strong> ${escapeHtml(step.gains)}</div>
+      ${
+        step.completedAt
+          ? `<div class="spec-row"><strong>Concluída em:</strong> ${escapeHtml(formatIsoToBr(step.completedAt))}</div>`
+          : ''
+      }
+    </div>
+
+    <form id="detail-note-form" class="form-stack" data-id="${escapeHtml(step.id)}">
+      <label class="field-label">
+        Nota pessoal
+        <textarea name="note" class="field-textarea" placeholder="Ex.: Faltam 12 Moldes; anotar janela do evento...">${escapeHtml(step.note)}</textarea>
+      </label>
+      <div class="sheet-actions">
+        ${
+          step.note
+            ? `<button type="button" class="btn-danger" data-action="clear-note" data-id="${escapeHtml(step.id)}">Apagar nota</button>`
+            : ''
+        }
+        <button type="submit" class="btn-secondary">Salvar nota</button>
+      </div>
+    </form>
+
+    <div class="sheet-footer-links">
+      <button type="button" class="discrete-btn" data-action="open-add-after-step" data-id="${escapeHtml(step.id)}">
+        + Etapa após #${escapeHtml(step.displayNumber)}
+      </button>
+      ${
+        step.isCustom
+          ? `<button type="button" class="discrete-btn" data-action="open-edit-step-sheet" data-id="${escapeHtml(step.id)}">Editar extra</button>
+             <button type="button" class="discrete-btn is-danger" data-action="open-delete-step-sheet" data-id="${escapeHtml(step.id)}">Excluir</button>`
+          : ''
+      }
+    </div>
+  `);
+}
+
 function openPowerSheet() {
   const state = store.loadState();
   const stats = store.getStats(state);
   const lastOffice = stats.latestPower.officeLevel || 26;
   openSheet(`
+    <div class="sheet-handle"></div>
     <div class="sheet-header">
       <h2 id="sheet-title" class="sheet-title">Registrar Poder Total</h2>
       <button type="button" class="discrete-btn" data-action="close-sheet">Fechar</button>
@@ -602,51 +652,26 @@ function openPowerSheet() {
   `);
 }
 
-function openNoteSheet(stepId) {
-  const state = store.loadState();
-  const step = store.getMergedSteps(state).find((s) => s.id === stepId);
-  if (!step) return;
-  openSheet(`
-    <div class="sheet-header">
-      <h2 id="sheet-title" class="sheet-title">Nota • Etapa #${escapeHtml(step.displayNumber)}</h2>
-      <button type="button" class="discrete-btn" data-action="close-sheet">Fechar</button>
-    </div>
-    <form id="note-form" class="form-stack" data-id="${escapeHtml(stepId)}">
-      <p class="header-sub" style="margin:0">${escapeHtml(step.mission)}</p>
-      <label class="field-label">
-        Anotação pessoal
-        <textarea name="note" class="field-textarea" placeholder="Ex.: Faltam 12 Moldes; confirmar barra parcial...">${escapeHtml(step.note)}</textarea>
-      </label>
-      <div class="sheet-actions">
-        ${
-          step.note
-            ? `<button type="button" class="btn-danger" data-action="clear-note" data-id="${escapeHtml(stepId)}">Apagar</button>`
-            : ''
-        }
-        <button type="submit" class="btn-primary">Salvar nota</button>
-      </div>
-    </form>
-  `);
-}
-
-function openCustomStepSheet(editStepId = null) {
+function openCustomStepSheet(editStepId = null, preselectedAfterId = null) {
   const state = store.loadState();
   const merged = store.getMergedSteps(state);
   const editing = editStepId ? merged.find((s) => s.id === editStepId && s.isCustom) : null;
   const firstPending = merged.find((s) => s.status === 'pending');
+  const fallbackEndId = BASE_STEPS[BASE_STEPS.length - 1]?.id || 'base-1';
   const defaultAfter = editing
     ? editing.insertAfterId
-    : firstPending?.id || merged[merged.length - 1]?.id || 'base-67';
+    : preselectedAfterId || firstPending?.id || merged[merged.length - 1]?.id || fallbackEndId;
 
   openSheet(`
+    <div class="sheet-handle"></div>
     <div class="sheet-header">
       <h2 id="sheet-title" class="sheet-title">${editing ? 'Editar Etapa Extra' : 'Nova Etapa Personalizada'}</h2>
       <button type="button" class="discrete-btn" data-action="close-sheet">Fechar</button>
     </div>
     <form id="custom-step-form" class="form-stack" data-edit-id="${escapeHtml(editStepId || '')}">
       <label class="field-label">
-        Missão
-        <input name="mission" class="field-input" type="text" required maxlength="200" placeholder="Ex.: Subir Armazém 23 → 24" value="${escapeHtml(editing?.mission || '')}" />
+        Missão (ex.: evento aberto, obra ou meta extra)
+        <input name="mission" class="field-input" type="text" required maxlength="200" placeholder="Ex.: Ataque ao Campo de Petróleo — Zona 2" value="${escapeHtml(editing?.mission || '')}" />
       </label>
       <label class="field-label">
         Categoria (Frente)
@@ -661,7 +686,7 @@ function openCustomStepSheet(editStepId = null) {
           ? `<label class="field-label">
               Inserir após qual etapa
               <select name="insertAfterId" class="field-select">
-                <option value="__start__">No início (antes da #1)</option>
+                <option value="__start__" ${defaultAfter === '__start__' ? 'selected' : ''}>No início (antes da #1)</option>
                 ${merged
                   .filter((s) => s.id !== editStepId)
                   .map(
@@ -675,20 +700,40 @@ function openCustomStepSheet(editStepId = null) {
       }
       <label class="field-label">
         Prazo / Janela
-        <input name="deadline" class="field-input" type="text" maxlength="100" placeholder="Ex.: Quando sobrar fila" value="${escapeHtml(editing?.deadline || '')}" />
+        <input name="deadline" class="field-input" type="text" maxlength="100" placeholder="Ex.: Hoje (evento aberto)" value="${escapeHtml(editing?.deadline || '')}" />
       </label>
       <label class="field-label">
-        Custo
-        <input name="cost" class="field-input" type="text" maxlength="120" placeholder="Ex.: 10M Mun / 10M Din" value="${escapeHtml(editing?.cost || '')}" />
+        Custo (opcional)
+        <input name="cost" class="field-input" type="text" maxlength="120" placeholder="Ex.: 0 mortes / 10M Mun" value="${escapeHtml(editing?.cost || '')}" />
       </label>
       <label class="field-label">
-        Ganhos
-        <input name="gains" class="field-input" type="text" maxlength="140" placeholder="Ex.: Protege recursos" value="${escapeHtml(editing?.gains || '')}" />
+        Ganhos (opcional)
+        <input name="gains" class="field-input" type="text" maxlength="140" placeholder="Ex.: Moldes e Mandados" value="${escapeHtml(editing?.gains || '')}" />
       </label>
       <div class="sheet-actions">
         <button type="submit" class="btn-primary">${editing ? 'Salvar alterações' : 'Adicionar etapa'}</button>
       </div>
     </form>
+  `);
+}
+
+function openDeleteCustomStepSheet(stepId) {
+  const state = store.loadState();
+  const step = store.getMergedSteps(state).find((s) => s.id === stepId && s.isCustom);
+  if (!step) return;
+  openSheet(`
+    <div class="sheet-handle"></div>
+    <div class="sheet-header">
+      <h2 id="sheet-title" class="sheet-title">Excluir etapa extra</h2>
+      <button type="button" class="discrete-btn" data-action="close-sheet">Cancelar</button>
+    </div>
+    <div class="form-stack">
+      <p class="muted" style="margin:0;font-size:13.5px">Deseja excluir permanentemente a etapa <strong>#${escapeHtml(step.displayNumber)}</strong>?</p>
+      <p style="margin:0;font-size:14px;font-weight:600">${escapeHtml(step.mission)}</p>
+      <div class="sheet-actions">
+        <button type="button" class="btn-danger" data-action="confirm-delete-custom-step" data-id="${escapeHtml(step.id)}">Confirmar exclusão</button>
+      </div>
+    </div>
   `);
 }
 
@@ -701,16 +746,17 @@ function openDeletePowerSheet(powerId) {
     return;
   }
   openSheet(`
+    <div class="sheet-handle"></div>
     <div class="sheet-header">
       <h2 id="sheet-title" class="sheet-title">Remover registro de Poder</h2>
       <button type="button" class="discrete-btn" data-action="close-sheet">Cancelar</button>
     </div>
     <div class="form-stack">
-      <p class="header-sub" style="margin:0">Deseja remover este lançamento do histórico?</p>
-      <div class="detail-grid">
-        <div class="detail-row"><strong>Poder:</strong> ${escapeHtml(formatPowerFull(entry.power))}</div>
-        <div class="detail-row"><strong>Data:</strong> ${escapeHtml(formatIsoToBr(entry.date))}</div>
-        ${entry.note ? `<div class="detail-row"><strong>Nota:</strong> ${escapeHtml(entry.note)}</div>` : ''}
+      <p class="muted" style="margin:0;font-size:13.5px">Deseja remover este lançamento do histórico?</p>
+      <div class="spec-list">
+        <div class="spec-row"><strong>Poder:</strong> ${escapeHtml(formatPowerFull(entry.power))}</div>
+        <div class="spec-row"><strong>Data:</strong> ${escapeHtml(formatIsoToBr(entry.date))}</div>
+        ${entry.note ? `<div class="spec-row"><strong>Nota:</strong> ${escapeHtml(entry.note)}</div>` : ''}
       </div>
       <div class="sheet-actions">
         <button type="button" class="btn-danger" data-action="confirm-delete-power" data-id="${escapeHtml(entry.id)}">Confirmar remoção</button>
@@ -721,13 +767,14 @@ function openDeletePowerSheet(powerId) {
 
 function openResetSheet() {
   openSheet(`
+    <div class="sheet-handle"></div>
     <div class="sheet-header">
       <h2 id="sheet-title" class="sheet-title">Resetar progresso</h2>
       <button type="button" class="discrete-btn" data-action="close-sheet">Cancelar</button>
     </div>
     <form id="reset-form" class="form-stack">
-      <p class="header-sub" style="margin:0">
-        Por padrão, limpa apenas os checks (<strong>concluídas</strong> e <strong>em curso</strong>), mantendo suas notas, etapas extras e histórico de Poder.
+      <p class="muted" style="margin:0;font-size:13.5px">
+        Por padrão, limpa apenas os checks (<strong>concluídas</strong> e <strong>em curso</strong>), mantendo notas, etapas extras e histórico de Poder.
       </p>
       <label class="checkbox-row">
         <input type="checkbox" name="clearNotesAndCustom" />
@@ -746,18 +793,19 @@ function openResetSheet() {
 
 function openImportPreviewSheet(jsonString, parsed) {
   openSheet(`
+    <div class="sheet-handle"></div>
     <div class="sheet-header">
       <h2 id="sheet-title" class="sheet-title">Confirmar importação</h2>
       <button type="button" class="discrete-btn" data-action="close-sheet">Cancelar</button>
     </div>
     <div class="form-stack">
-      <p class="header-sub" style="margin:0">Backup validado com sucesso:</p>
-      <div class="detail-grid">
-        <div class="detail-row"><strong>Concluídas:</strong> ${Object.keys(parsed.completed).length}</div>
-        <div class="detail-row"><strong>Em curso:</strong> ${Object.keys(parsed.inProgress).length}</div>
-        <div class="detail-row"><strong>Notas pessoais:</strong> ${Object.keys(parsed.notes).length}</div>
-        <div class="detail-row"><strong>Etapas extras:</strong> ${parsed.customSteps.length}</div>
-        <div class="detail-row"><strong>Registros de Poder:</strong> ${parsed.powerHistory.length}</div>
+      <p class="muted" style="margin:0;font-size:13.5px">Backup validado com sucesso:</p>
+      <div class="spec-list">
+        <div class="spec-row"><strong>Concluídas:</strong> ${Object.keys(parsed.completed).length}</div>
+        <div class="spec-row"><strong>Em curso:</strong> ${Object.keys(parsed.inProgress).length}</div>
+        <div class="spec-row"><strong>Notas pessoais:</strong> ${Object.keys(parsed.notes).length}</div>
+        <div class="spec-row"><strong>Etapas extras:</strong> ${parsed.customSteps.length}</div>
+        <div class="spec-row"><strong>Registros de Poder:</strong> ${parsed.powerHistory.length}</div>
       </div>
       <div class="sheet-actions">
         <button type="button" class="btn-primary" id="confirm-import-btn">Substituir dados locais</button>
@@ -765,11 +813,28 @@ function openImportPreviewSheet(jsonString, parsed) {
     </div>
   `);
   document.getElementById('confirm-import-btn')?.addEventListener('click', () => {
-    store.importBackup(jsonString);
-    closeSheet();
-    render();
-    showToast('Backup restaurado com sucesso');
+    try {
+      store.importBackup(jsonString);
+      closeSheet();
+      render();
+      showToast('Backup restaurado com sucesso');
+    } catch (err) {
+      showToast(err.message || 'Erro ao restaurar backup');
+    }
   });
+}
+
+function handleStatusChange(id, status, reopenDetail = false) {
+  try {
+    store.setStepStatus(id, status);
+    render();
+    if (reopenDetail) openStepDetailSheet(id);
+    if (status === 'completed') showToast('Etapa concluída');
+    else if (status === 'in_progress') showToast('Movida para Em curso');
+    else showToast('Etapa marcada como pendente');
+  } catch (err) {
+    showToast(err.message);
+  }
 }
 
 // Navigation
@@ -801,19 +866,9 @@ els.main.addEventListener('click', async (event) => {
   const { action, id, status, value } = btn.dataset;
 
   if (action === 'set-status' && id && status) {
-    try {
-      store.setStepStatus(id, status);
-      render();
-      if (status === 'completed') showToast('Etapa concluída');
-      else if (status === 'in_progress') showToast('Movida para Em curso');
-      else showToast('Etapa marcada como pendente');
-    } catch (err) {
-      showToast(err.message);
-    }
-  } else if (action === 'toggle-expand' && id) {
-    if (ui.expandedIds.has(id)) ui.expandedIds.delete(id);
-    else ui.expandedIds.add(id);
-    render();
+    handleStatusChange(id, status, false);
+  } else if (action === 'open-step-detail' && id) {
+    openStepDetailSheet(id);
   } else if (action === 'toggle-active-strip') {
     ui.activeStripOpen = !ui.activeStripOpen;
     render();
@@ -840,21 +895,8 @@ els.main.addEventListener('click', async (event) => {
     updateStepsListOnly();
   } else if (action === 'open-power-sheet') {
     openPowerSheet();
-  } else if (action === 'open-note-sheet' && id) {
-    openNoteSheet(id);
   } else if (action === 'open-add-step-sheet') {
-    openCustomStepSheet(null);
-  } else if (action === 'open-edit-step-sheet' && id) {
-    openCustomStepSheet(id);
-  } else if (action === 'delete-custom-step' && id) {
-    try {
-      store.deleteCustomStep(id);
-      ui.expandedIds.delete(id);
-      render();
-      showToast('Etapa personalizada removida');
-    } catch (err) {
-      showToast(err.message);
-    }
+    openCustomStepSheet(null, null);
   } else if (action === 'delete-power-log' && id) {
     openDeletePowerSheet(id);
   } else if (action === 'export-backup') {
@@ -910,21 +952,40 @@ els.backdrop.addEventListener('click', (event) => {
   }
   const btn = event.target.closest('[data-action]');
   if (!btn) return;
-  if (btn.dataset.action === 'close-sheet') {
+  const { action, id, status } = btn.dataset;
+
+  if (action === 'close-sheet') {
     closeSheet();
-  } else if (btn.dataset.action === 'clear-note' && btn.dataset.id) {
+  } else if (action === 'sheet-set-status' && id && status) {
+    handleStatusChange(id, status, true);
+  } else if (action === 'clear-note' && id) {
     try {
-      store.setNote(btn.dataset.id, '');
-      closeSheet();
+      store.setNote(id, '');
       render();
+      openStepDetailSheet(id);
       showToast('Nota removida');
     } catch (err) {
       showToast(err.message);
     }
-  } else if (btn.dataset.action === 'confirm-delete-power' && btn.dataset.id) {
+  } else if (action === 'open-add-after-step' && id) {
+    openCustomStepSheet(null, id);
+  } else if (action === 'open-edit-step-sheet' && id) {
+    openCustomStepSheet(id, null);
+  } else if (action === 'open-delete-step-sheet' && id) {
+    openDeleteCustomStepSheet(id);
+  } else if (action === 'confirm-delete-custom-step' && id) {
     try {
-      store.deletePowerLog(btn.dataset.id);
-      if (ui.selectedPowerId === btn.dataset.id) ui.selectedPowerId = null;
+      store.deleteCustomStep(id);
+      closeSheet();
+      render();
+      showToast('Etapa personalizada removida');
+    } catch (err) {
+      showToast(err.message);
+    }
+  } else if (action === 'confirm-delete-power' && id) {
+    try {
+      store.deletePowerLog(id);
+      if (ui.selectedPowerId === id) ui.selectedPowerId = null;
       closeSheet();
       render();
       showToast('Registro de Poder removido');
@@ -954,11 +1015,16 @@ els.sheet.addEventListener('submit', (event) => {
     } catch (err) {
       showToast(err.message);
     }
-  } else if (form.id === 'note-form') {
-    store.setNote(form.dataset.id, fd.get('note'));
-    closeSheet();
-    render();
-    showToast('Nota salva');
+  } else if (form.id === 'detail-note-form') {
+    try {
+      const stepId = form.dataset.id;
+      store.setNote(stepId, fd.get('note'));
+      render();
+      openStepDetailSheet(stepId);
+      showToast('Nota salva');
+    } catch (err) {
+      showToast(err.message);
+    }
   } else if (form.id === 'custom-step-form') {
     const editId = form.dataset.editId;
     const category = String(fd.get('category') || CATEGORIES[0]);
@@ -972,6 +1038,8 @@ els.sheet.addEventListener('submit', (event) => {
           cost: fd.get('cost'),
           gains: fd.get('gains'),
         });
+        closeSheet();
+        render();
         showToast('Etapa atualizada');
       } else {
         store.addCustomStep({
@@ -983,23 +1051,26 @@ els.sheet.addEventListener('submit', (event) => {
           cost: fd.get('cost'),
           gains: fd.get('gains'),
         });
+        closeSheet();
+        render();
         showToast('Nova etapa adicionada');
       }
-      closeSheet();
-      render();
     } catch (err) {
       showToast(err.message);
     }
   } else if (form.id === 'reset-form') {
-    store.resetState({
-      clearNotesAndCustom: fd.get('clearNotesAndCustom') === 'on',
-      clearPower: fd.get('clearPower') === 'on',
-    });
-    ui.expandedIds.clear();
-    ui.selectedPowerId = null;
-    closeSheet();
-    render();
-    showToast('Progresso reiniciado');
+    try {
+      store.resetState({
+        clearNotesAndCustom: fd.get('clearNotesAndCustom') === 'on',
+        clearPower: fd.get('clearPower') === 'on',
+      });
+      ui.selectedPowerId = null;
+      closeSheet();
+      render();
+      showToast('Progresso reiniciado');
+    } catch (err) {
+      showToast(err.message);
+    }
   }
 });
 

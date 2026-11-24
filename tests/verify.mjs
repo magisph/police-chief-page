@@ -7,9 +7,9 @@ import {
   mapFrontToCategory,
 } from '../js/data.js';
 
-test('BASE_STEPS contains all 67 ordered steps from final_master_plan.md', () => {
-  assert.equal(BASE_STEPS.length, 67);
-  for (let i = 0; i < 67; i += 1) {
+test('BASE_STEPS contains all 64 ordered steps without unscheduled event steps', () => {
+  assert.equal(BASE_STEPS.length, 64);
+  for (let i = 0; i < 64; i += 1) {
     const item = BASE_STEPS[i];
     assert.equal(item.step, i + 1);
     assert.equal(item.id, `base-${i + 1}`);
@@ -20,6 +20,8 @@ test('BASE_STEPS contains all 67 ordered steps from final_master_plan.md', () =>
     assert.ok(item.deadline.trim().length > 2, `Step ${i + 1} missing deadline`);
     assert.ok(item.cost.trim().length > 1, `Step ${i + 1} missing cost`);
     assert.ok(item.gains.trim().length > 3, `Step ${i + 1} missing gains`);
+    assert.notEqual(item.front, 'Coleta (Eventos)');
+    assert.ok(!/Ataque ao Campo de Petróleo|Ataque da Máfia|Escolta Conjunta/i.test(`${item.mission} ${item.deadline}`));
   }
 });
 
@@ -103,7 +105,7 @@ test('addCustomStep numbers N.1/N.2 and deleteCustomStep cleans orphan keys and 
   store.setNote(r1.newStep.id, 'Nota temporária');
 
   let merged = store.getMergedSteps(store.loadState());
-  assert.equal(merged.length, 69);
+  assert.equal(merged.length, 66);
   const idx11 = merged.findIndex((x) => x.id === 'base-11');
   assert.equal(merged[idx11].displayNumber, '11');
   assert.equal(merged[idx11 + 1].id, r1.newStep.id);
@@ -117,7 +119,7 @@ test('addCustomStep numbers N.1/N.2 and deleteCustomStep cleans orphan keys and 
   assert.equal(afterDel.inProgress[r1.newStep.id], undefined);
   assert.equal(afterDel.notes[r1.newStep.id], undefined);
   merged = store.getMergedSteps(afterDel);
-  assert.equal(merged.length, 68);
+  assert.equal(merged.length, 65);
   assert.equal(merged[idx11 + 1].id, r2.newStep.id);
   assert.equal(merged[idx11 + 1].displayNumber, '11.1');
 });
@@ -171,10 +173,10 @@ test('getStats computes completion strictly on completed steps and aggregates by
   store.setStepStatus('base-1', 'completed');
   store.setStepStatus('base-2', 'in_progress');
   const stats = store.getStats(store.loadState());
-  assert.equal(stats.total, 67);
+  assert.equal(stats.total, 64);
   assert.equal(stats.completedCount, 1);
   assert.equal(stats.inProgressCount, 1);
-  assert.equal(stats.pendingCount, 65);
+  assert.equal(stats.pendingCount, 62);
   assert.equal(stats.byCategory.length, 7);
 });
 
@@ -285,6 +287,10 @@ test('styles.css enforces >= 44px touch targets on interactive controls', () => 
     '.filter-chip',
     '.discrete-btn',
     '.inline-pill-btn',
+    '.seg-btn',
+    '.fab-add-btn',
+    '.step-row-tap',
+    '.check-btn',
   ];
   for (const sel of selectors) {
     const idx = css.indexOf(`${sel} {`);
@@ -340,11 +346,15 @@ test('sw.js uses network-first for navigation, ignoreSearch, and waitUntil for c
   assert.ok(/waitUntil\([\s\S]*clients\.claim\(\)/.test(swText));
 });
 
-test('styles.css suppresses native webkit search cancel button and app.js confirms power deletion', () => {
+test('styles.css suppresses native webkit search cancel button and app.js confirms power deletion and uses unified step detail sheet', () => {
   const css = fs.readFileSync(path.join(rootDir, 'styles.css'), 'utf8');
   assert.ok(css.includes('::-webkit-search-cancel-button'));
+  assert.ok(css.includes('prefers-reduced-motion'));
 
   const appSrc = fs.readFileSync(path.join(rootDir, 'js', 'app.js'), 'utf8');
   assert.ok(appSrc.includes('openDeletePowerSheet'));
   assert.ok(appSrc.includes('confirm-delete-power'));
+  assert.ok(appSrc.includes('openStepDetailSheet'));
+  assert.ok(appSrc.includes('fab-add-btn'));
+  assert.ok(!appSrc.includes('base-67'));
 });

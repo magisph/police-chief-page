@@ -49,10 +49,10 @@ export function renderProgressRingSVG({ completedCount, total, inProgressCount =
   const safeActive = Math.max(0, Number(inProgressCount) || 0);
   const pct = Math.round((safeDone / safeTotal) * 100);
 
-  const size = 104;
-  const cx = 52;
-  const cy = 52;
-  const r = 41;
+  const size = 96;
+  const cx = 48;
+  const cy = 48;
+  const r = 39;
   const circumference = 2 * Math.PI * r;
   const doneDash = (safeDone / safeTotal) * circumference;
   const activeDash = Math.min(circumference - doneDash, (safeActive / safeTotal) * circumference);
@@ -61,24 +61,24 @@ export function renderProgressRingSVG({ completedCount, total, inProgressCount =
     <svg viewBox="0 0 ${size} ${size}" class="ring-svg" role="img" aria-label="Progresso ${pct}% concluído">
       <defs>
         <linearGradient id="ringDoneGrad" x1="0%" y1="0%" x2="100%" y2="100%">
-          <stop offset="0%" stop-color="#10B981" />
-          <stop offset="100%" stop-color="#22D3EE" />
+          <stop offset="0%" stop-color="#34B882" />
+          <stop offset="100%" stop-color="#5B9CF6" />
         </linearGradient>
       </defs>
-      <circle cx="${cx}" cy="${cy}" r="${r}" fill="none" stroke="rgba(148,163,184,0.16)" stroke-width="9" />
+      <circle cx="${cx}" cy="${cy}" r="${r}" fill="none" stroke="rgba(255,255,255,0.08)" stroke-width="6.5" />
       ${
         activeDash > 0
-          ? `<circle cx="${cx}" cy="${cy}" r="${r}" fill="none" stroke="rgba(56,189,248,0.45)" stroke-width="9"
+          ? `<circle cx="${cx}" cy="${cy}" r="${r}" fill="none" stroke="rgba(91,156,246,0.55)" stroke-width="6.5"
                stroke-dasharray="${activeDash.toFixed(2)} ${circumference.toFixed(2)}"
                stroke-dashoffset="-${doneDash.toFixed(2)}"
                transform="rotate(-90 ${cx} ${cy})" stroke-linecap="butt" />`
           : ''
       }
-      <circle cx="${cx}" cy="${cy}" r="${r}" fill="none" stroke="url(#ringDoneGrad)" stroke-width="9"
+      <circle cx="${cx}" cy="${cy}" r="${r}" fill="none" stroke="url(#ringDoneGrad)" stroke-width="6.5"
         stroke-dasharray="${doneDash.toFixed(2)} ${circumference.toFixed(2)}"
         transform="rotate(-90 ${cx} ${cy})" stroke-linecap="round" />
-      <text x="${cx}" y="${cy - 2}" text-anchor="middle" fill="#F8FAFC" font-size="20" font-weight="700">${pct}%</text>
-      <text x="${cx}" y="${cy + 15}" text-anchor="middle" fill="#94A3B8" font-size="10.5" font-weight="500">${safeDone}/${safeTotal}</text>
+      <text x="${cx}" y="${cy - 1}" text-anchor="middle" fill="#F1F5F9" font-size="19" font-weight="700">${pct}%</text>
+      <text x="${cx}" y="${cy + 14}" text-anchor="middle" fill="#94A3B8" font-size="10" font-weight="500">${safeDone}/${safeTotal}</text>
     </svg>
   `.trim();
 }
@@ -113,15 +113,15 @@ export function renderFrontBarsSVG(byCategory) {
         <g>
           <text x="${barX}" y="${y + 12}" fill="#E2E8F0" font-size="11.5" font-weight="600">${escapeSvg(item.category)}</text>
           <text x="${barX + barW}" y="${y + 12}" text-anchor="end" fill="#94A3B8" font-size="11" font-variant-numeric="tabular-nums">${completed}/${total} (${pct}%)</text>
-          <rect x="${barX}" y="${y + 18}" width="${barW}" height="8" rx="4" fill="rgba(148,163,184,0.14)" />
+          <rect x="${barX}" y="${y + 18}" width="${barW}" height="6" rx="3" fill="rgba(255,255,255,0.07)" />
           ${
             activeW > 0
-              ? `<rect x="${(barX + fillW).toFixed(2)}" y="${y + 18}" width="${activeW.toFixed(2)}" height="8" rx="3" fill="rgba(56,189,248,0.5)" />`
+              ? `<rect x="${(barX + fillW).toFixed(2)}" y="${y + 18}" width="${activeW.toFixed(2)}" height="6" rx="3" fill="rgba(91,156,246,0.6)" />`
               : ''
           }
           ${
             fillW > 0
-              ? `<rect x="${barX}" y="${y + 18}" width="${Math.max(6, fillW).toFixed(2)}" height="8" rx="4" fill="#10B981" />`
+              ? `<rect x="${barX}" y="${y + 18}" width="${Math.max(6, fillW).toFixed(2)}" height="6" rx="3" fill="#34B882" />`
               : ''
           }
         </g>
@@ -179,7 +179,7 @@ export function renderPowerLineSVG(powerHistory, selectedId = null) {
       const gy = padT + plotH - ratio * plotH;
       const gVal = minVal + ratio * safeSpan;
       return `
-        <line x1="${padL}" y1="${gy.toFixed(1)}" x2="${width - padR}" y2="${gy.toFixed(1)}" stroke="rgba(148,163,184,0.12)" stroke-dasharray="3 3" />
+        <line x1="${padL}" y1="${gy.toFixed(1)}" x2="${width - padR}" y2="${gy.toFixed(1)}" stroke="rgba(255,255,255,0.06)" stroke-dasharray="3 3" />
         <text x="${padL - 6}" y="${(gy + 3.5).toFixed(1)}" text-anchor="end" fill="#64748B" font-size="9.5">${escapeSvg(formatPowerCompact(gVal))}</text>
       `;
     })
@@ -202,9 +202,9 @@ export function renderPowerLineSVG(powerHistory, selectedId = null) {
         : '';
       return `
         <g class="power-node" data-power-id="${escapeSvg(c.entry.id)}" style="cursor:pointer">
-          <circle cx="${c.x}" cy="${c.y}" r="16" fill="transparent" />
-          ${isSelected ? `<circle cx="${c.x}" cy="${c.y}" r="9" fill="rgba(245,158,11,0.22)" />` : ''}
-          <circle cx="${c.x}" cy="${c.y}" r="${isSelected ? 5 : 3.8}" fill="${isSelected ? '#F59E0B' : '#22D3EE'}" stroke="#090D16" stroke-width="1.5" />
+          <circle cx="${c.x}" cy="${c.y}" r="18" fill="transparent" />
+          ${isSelected ? `<circle cx="${c.x}" cy="${c.y}" r="9" fill="rgba(226,169,59,0.22)" />` : ''}
+          <circle cx="${c.x}" cy="${c.y}" r="${isSelected ? 5 : 3.8}" fill="${isSelected ? '#E2A93B' : '#5B9CF6'}" stroke="#0D1117" stroke-width="1.5" />
           ${dateLabel}
         </g>
       `;
@@ -215,13 +215,13 @@ export function renderPowerLineSVG(powerHistory, selectedId = null) {
     <svg viewBox="0 0 ${width} ${height}" width="100%" class="chart-svg" role="img" aria-label="Curva de Poder Total">
       <defs>
         <linearGradient id="powerAreaGrad" x1="0%" y1="0%" x2="0%" y2="100%">
-          <stop offset="0%" stop-color="rgba(34,211,238,0.32)" />
-          <stop offset="100%" stop-color="rgba(34,211,238,0.01)" />
+          <stop offset="0%" stop-color="rgba(91,156,246,0.26)" />
+          <stop offset="100%" stop-color="rgba(91,156,246,0.01)" />
         </linearGradient>
       </defs>
       ${gridLines}
       ${areaPath ? `<path d="${areaPath}" fill="url(#powerAreaGrad)" />` : ''}
-      ${coords.length > 1 ? `<path d="${linePath}" fill="none" stroke="#22D3EE" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" />` : ''}
+      ${coords.length > 1 ? `<path d="${linePath}" fill="none" stroke="#5B9CF6" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" />` : ''}
       ${nodesSvg}
     </svg>
   `.trim();
@@ -276,7 +276,7 @@ export function renderPaceBarsSVG(completedMap, days = 7) {
       const by = padT + plotH - bh;
       return `
         <g>
-          <rect x="${bx.toFixed(1)}" y="${by.toFixed(1)}" width="${barW.toFixed(1)}" height="${bh.toFixed(1)}" rx="4" fill="#10B981" />
+          <rect x="${bx.toFixed(1)}" y="${by.toFixed(1)}" width="${barW.toFixed(1)}" height="${bh.toFixed(1)}" rx="4" fill="#34B882" />
           <text x="${(bx + barW / 2).toFixed(1)}" y="${(by - 4).toFixed(1)}" text-anchor="middle" fill="#E2E8F0" font-size="10" font-weight="600">${count}</text>
           <text x="${(bx + barW / 2).toFixed(1)}" y="${height - 8}" text-anchor="middle" fill="#94A3B8" font-size="9.5">${escapeSvg(formatDateBrShort(day))}</text>
         </g>
@@ -286,7 +286,7 @@ export function renderPaceBarsSVG(completedMap, days = 7) {
 
   return `
     <svg viewBox="0 0 ${width} ${height}" width="100%" class="chart-svg" role="img" aria-label="Ritmo de etapas concluídas">
-      <line x1="${padL}" y1="${padT + plotH}" x2="${width - padR}" y2="${padT + plotH}" stroke="rgba(148,163,184,0.2)" />
+      <line x1="${padL}" y1="${padT + plotH}" x2="${width - padR}" y2="${padT + plotH}" stroke="rgba(255,255,255,0.08)" />
       ${barsSvg}
     </svg>
   `.trim();
