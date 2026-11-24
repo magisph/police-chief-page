@@ -169,7 +169,7 @@ textarea:focus-visible {
 /* Main View */
 .main-view {
   flex: 1;
-  padding: 14px 14px calc(104px + env(safe-area-inset-bottom));
+  padding: 14px 14px calc(156px + env(safe-area-inset-bottom));
   display: flex;
   flex-direction: column;
   gap: 14px;
@@ -752,7 +752,7 @@ textarea:focus-visible {
 /* Floating Action Button in Thumb Zone (Steps tab) */
 .fab-add-btn {
   position: fixed;
-  right: 16px;
+  right: max(16px, calc(50% - 224px));
   bottom: calc(80px + env(safe-area-inset-bottom));
   z-index: 25;
   min-width: 54px;
@@ -1084,10 +1084,10 @@ textarea:focus-visible {
 .toast {
   position: fixed;
   left: 50%;
-  bottom: calc(82px + env(safe-area-inset-bottom));
+  bottom: calc(146px + env(safe-area-inset-bottom));
   transform: translateX(-50%);
   z-index: 60;
-  max-width: calc(100% - 32px);
+  max-width: min(360px, calc(100% - 32px));
   padding: 10px 16px;
   border-radius: 999px;
   background: var(--surface-3);

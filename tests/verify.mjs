@@ -358,3 +358,16 @@ test('styles.css suppresses native webkit search cancel button and app.js confir
   assert.ok(appSrc.includes('fab-add-btn'));
   assert.ok(!appSrc.includes('base-67'));
 });
+
+test('styles.css clears FAB height in .main-view bottom padding and places .toast above FAB', () => {
+  const css = fs.readFileSync(path.join(rootDir, 'styles.css'), 'utf8');
+  const mainMatch = /\.main-view\s*\{[\s\S]*?padding:\s*14px 14px calc\((\d+)px/.exec(css);
+  const fabBottomMatch = /\.fab-add-btn\s*\{[\s\S]*?bottom:\s*calc\((\d+)px/.exec(css);
+  const fabHeightMatch = /\.fab-add-btn\s*\{[\s\S]*?min-height:\s*(\d+)px/.exec(css);
+  const toastBottomMatch = /\.toast\s*\{[\s\S]*?bottom:\s*calc\((\d+)px/.exec(css);
+
+  assert.ok(mainMatch && fabBottomMatch && fabHeightMatch && toastBottomMatch);
+  const fabTop = Number(fabBottomMatch[1]) + Number(fabHeightMatch[1]);
+  assert.ok(Number(mainMatch[1]) >= fabTop + 16, `.main-view bottom padding (${mainMatch[1]}) must clear FAB top (${fabTop})`);
+  assert.ok(Number(toastBottomMatch[1]) >= fabTop + 8, `.toast bottom (${toastBottomMatch[1]}) must sit above FAB top (${fabTop})`);
+});
